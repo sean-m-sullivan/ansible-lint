@@ -211,7 +211,7 @@ def test_get_yaml_files_silent(is_in_git, monkeypatch, capsys):
     """
     options = cli.get_config([])
     test_dir = Path(__file__).resolve().parent
-    lint_path = test_dir / 'roles' / 'test-role'
+    lint_path = test_dir / '..' / 'examples' / 'roles' / 'test-role'
     if not is_in_git:
         monkeypatch.setenv('GIT_DIR', '')
 
@@ -258,14 +258,14 @@ def test_cli_auto_detect(capfd):
     # Confirmation that it runs in auto-detect mode
     assert "Discovering files to lint: git ls-files *.yaml *.yml" in err
     # Expected failure to detect file type"
-    assert "Unknown file type: test/fixtures/unknown-type.yml" in err
+    assert "Identified: test/fixtures/unknown-type.yml (yaml)" in err
     # An expected rule match from our examples
     assert "examples/roles/bobbins/tasks/main.yml:2: " \
         "E401 Git checkouts must contain explicit version" in out
     # assures that our .ansible-lint exclude was effective in excluding github files
-    assert "Unknown file type: .github/" not in out
+    assert "Identified: .github/" not in out
     # assures that we can parse playbooks as playbooks
-    assert "Unknown file type: test/test/always-run-success.yml" not in err
+    assert "Identified: test/test/always-run-success.yml" not in err
 
 
 def test_is_playbook():
@@ -279,6 +279,16 @@ def test_is_playbook():
         ("foo/playbook.yml", "playbook"),
         ("playbooks/foo.yml", "playbook"),
         ("playbooks/roles/foo.yml", "yaml"),
+        # the only yml file that is not a playbook inside molecule/ folders
+        (".config/molecule/config.yml", "yaml"),  # molecule shared config
+        ("roles/foo/molecule/scen1/molecule.yml", "yaml"),  # molecule scenario config
+        ("roles/foo/molecule/scen2/foobar.yml", "playbook"),  # custom playbook name
+        ("roles/foo/molecule/scen3/converge.yml", "playbook"),  # common playbook name
+        # requirements (we do not support includes yet)
+        ("requirements.yml", "requirements"),  # collection requirements
+        ("roles/foo/meta/requirements.yml", "requirements"),  # inside role requirements
+        # Undeterminable files:
+        ("test/fixtures/unknown-type.yml", "yaml"),
     ),
 )
 def test_auto_detect(monkeypatch, path: str, kind: FileType) -> None:
@@ -288,9 +298,14 @@ def test_auto_detect(monkeypatch, path: str, kind: FileType) -> None:
     def mockreturn(options):
         return [path]
 
+    # assert Lintable is able to determine file type
+    # lintable_detected = Lintable(path)
+    lintable_expected = Lintable(path, kind=kind)
+    # assert lintable_detected == lintable_expected
+
     monkeypatch.setattr(utils, 'get_yaml_files', mockreturn)
     result = utils.get_lintables(options)
-    assert result == [Lintable(path, kind=kind)]
+    assert result == [lintable_expected]
 
 
 def test_auto_detect_exclude(monkeypatch):
