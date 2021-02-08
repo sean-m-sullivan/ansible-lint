@@ -42,13 +42,14 @@ you to have a more fine control.
 
 
 class YamllintRule(AnsibleLintRule):
-    id = 'YAML'
+    id = 'yaml'
     shortdesc = 'Violations reported by yamllint'
     description = DESCRIPTION
     severity = 'VERY_LOW'
-    tags = ['formatting', 'experimental', 'yamllint']
+    tags = ['formatting', 'yaml']
     version_added = 'v5.0.0'
     config = None
+    has_dynamic_tags = True
     if "yamllint.config" in sys.modules:
         config = YamlLintConfig(content=YAMLLINT_CONFIG)
         # if we detect local yamllint config we use it but raise a warning
@@ -58,7 +59,8 @@ class YamllintRule(AnsibleLintRule):
                 _logger.warning(
                     "Loading custom %s config file, this extends our "
                     "internal yamllint config.",
-                    file)
+                    file,
+                )
                 config_override = YamlLintConfig(file=file)
                 config_override.extend(config)
                 break
@@ -71,8 +73,10 @@ class YamllintRule(AnsibleLintRule):
 
     def matchyaml(self, file: Lintable) -> List["MatchError"]:
         """Return matches found for a specific YAML text."""
-        matches = []
+        matches: List["MatchError"] = []
         filtered_matches = []
+        if file.kind == 'role':
+            return matches
 
         if YamllintRule.config:
             for p in run_yamllint(file.content, YamllintRule.config):
@@ -82,13 +86,15 @@ class YamllintRule(AnsibleLintRule):
                         linenumber=p.line,
                         details="",
                         filename=str(file.path),
-                        tag=p.rule))
+                        tag=p.rule,
+                    )
+                )
 
         if matches:
             lines = file.content.splitlines()
             for match in matches:
                 # rule.linenumber starts with 1, not zero
-                skip_list = get_rule_skips_from_line(lines[match.linenumber-1])
+                skip_list = get_rule_skips_from_line(lines[match.linenumber - 1])
                 # print(skip_list)
                 if match.rule.id not in skip_list and match.tag not in skip_list:
                     filtered_matches.append(match)

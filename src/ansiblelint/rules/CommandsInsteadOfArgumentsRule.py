@@ -26,20 +26,26 @@ from ansiblelint.utils import convert_to_boolean, get_first_cmd_arg
 
 
 class CommandsInsteadOfArgumentsRule(AnsibleLintRule):
-    id = '302'
+    id = 'deprecated-command-syntax'
     shortdesc = 'Using command rather than an argument to e.g. file'
     description = (
         'Executing a command when there are arguments to modules '
         'is generally a bad idea'
     )
     severity = 'VERY_HIGH'
-    tags = ['command-shell', 'resources']
+    tags = ['command-shell', 'deprecations']
     version_added = 'historic'
 
     _commands = ['command', 'shell', 'raw']
-    _arguments = {'chown': 'owner', 'chmod': 'mode', 'chgrp': 'group',
-                  'ln': 'state=link', 'mkdir': 'state=directory',
-                  'rmdir': 'state=absent', 'rm': 'state=absent'}
+    _arguments = {
+        'chown': 'owner',
+        'chmod': 'mode',
+        'chgrp': 'group',
+        'ln': 'state=link',
+        'mkdir': 'state=directory',
+        'rmdir': 'state=absent',
+        'rm': 'state=absent',
+    }
 
     def matchtask(self, task: Dict[str, Any]) -> Union[bool, str]:
         if task["action"]["__ansible_module__"] in self._commands:
@@ -48,8 +54,9 @@ class CommandsInsteadOfArgumentsRule(AnsibleLintRule):
                 return False
 
             executable = os.path.basename(first_cmd_arg)
-            if executable in self._arguments and \
-                    convert_to_boolean(task['action'].get('warn', True)):
+            if executable in self._arguments and convert_to_boolean(
+                task['action'].get('warn', True)
+            ):
                 message = "{0} used in place of argument {1} to file module"
                 return message.format(executable, self._arguments[executable])
         return False

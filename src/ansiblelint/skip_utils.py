@@ -26,7 +26,8 @@ from typing import Any, Generator, List, Optional, Sequence
 
 import ruamel.yaml
 
-from ansiblelint.constants import FileType
+from ansiblelint.config import used_old_tags
+from ansiblelint.constants import RENAMED_TAGS, FileType
 
 _logger = logging.getLogger(__name__)
 
@@ -45,9 +46,8 @@ def get_rule_skips_from_line(line: str) -> List:
 
 
 def append_skipped_rules(
-        pyyaml_data: str,
-        file_text: str,
-        file_type: Optional[FileType] = None) -> Sequence:
+    pyyaml_data: str, file_text: str, file_type: Optional[FileType] = None
+) -> Sequence:
     """Append 'skipped_rules' to individual tasks or single metadata block.
 
     For a file, uses 2nd parser (ruamel.yaml) to pull comments out of
@@ -83,9 +83,8 @@ def load_data(file_text: str) -> Any:
 
 
 def _append_skipped_rules(
-        pyyaml_data: Sequence[Any],
-        file_text: str,
-        file_type: Optional[FileType] = None) -> Sequence:
+    pyyaml_data: Sequence[Any], file_text: str, file_type: Optional[FileType] = None
+) -> Sequence:
     # parse file text using 2nd parser library
     ruamel_data = load_data(file_text)
 
@@ -106,7 +105,7 @@ def _append_skipped_rules(
             # assume it is a playbook, check needs to be added higher in the
             # call stack, and can remove this except
             return pyyaml_data
-    elif file_type in ['yaml', 'requirements']:
+    elif file_type in ['yaml', 'requirements', 'vars']:
         return pyyaml_data
     else:
         raise RuntimeError('Unexpected file type: {}'.format(file_type))
@@ -192,4 +191,12 @@ def _get_rule_skips_from_yaml(yaml_input: Sequence) -> Sequence:
         for line in comment_obj_str.split(r'\n'):
             rule_id_list.extend(get_rule_skips_from_line(line))
 
-    return rule_id_list
+    return [normalize_tag(tag) for tag in rule_id_list]
+
+
+def normalize_tag(tag: str) -> str:
+    """Return current name of tag."""
+    if tag in RENAMED_TAGS:
+        used_old_tags[tag] = RENAMED_TAGS[tag]
+        return RENAMED_TAGS[tag]
+    return tag

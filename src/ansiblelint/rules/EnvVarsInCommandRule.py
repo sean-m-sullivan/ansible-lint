@@ -25,20 +25,31 @@ from ansiblelint.utils import FILENAME_KEY, LINE_NUMBER_KEY, get_first_cmd_arg
 
 
 class EnvVarsInCommandRule(AnsibleLintRule):
-    id = '304'
+    id = 'inline-env-var'
     shortdesc = "Command module does not accept setting environment variables inline"
     description = (
         'Use ``environment:`` to set environment variables '
         'or use ``shell`` module which accepts both'
     )
     severity = 'VERY_HIGH'
-    tags = ['command-shell', 'bug']
+    tags = ['command-shell', 'idiom']
     version_added = 'historic'
 
-    expected_args = ['chdir', 'creates', 'executable', 'removes', 'stdin', 'warn',
-                     'stdin_add_newline', 'strip_empty_ends',
-                     'cmd', '__ansible_module__', '__ansible_arguments__',
-                     LINE_NUMBER_KEY, FILENAME_KEY]
+    expected_args = [
+        'chdir',
+        'creates',
+        'executable',
+        'removes',
+        'stdin',
+        'warn',
+        'stdin_add_newline',
+        'strip_empty_ends',
+        'cmd',
+        '__ansible_module__',
+        '__ansible_arguments__',
+        LINE_NUMBER_KEY,
+        FILENAME_KEY,
+    ]
 
     def matchtask(self, task: Dict[str, Any]) -> Union[bool, str]:
         if task["action"]["__ansible_module__"] in ['command']:
@@ -46,6 +57,8 @@ class EnvVarsInCommandRule(AnsibleLintRule):
             if not first_cmd_arg:
                 return False
 
-            return any([arg not in self.expected_args for arg in task['action']] +
-                       ["=" in first_cmd_arg])
+            return any(
+                [arg not in self.expected_args for arg in task['action']]
+                + ["=" in first_cmd_arg]
+            )
         return False

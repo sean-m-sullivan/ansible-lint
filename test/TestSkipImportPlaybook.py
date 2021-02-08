@@ -14,7 +14,7 @@ MAIN_PLAYBOOK = '''\
 - hosts: all
 
   tasks:
-    - name: should be shell  # noqa 305 301
+    - name: should be shell  # noqa command-instead-of-shell no-changed-when
       shell: echo lol
 
 - import_playbook: imported_playbook.yml
@@ -30,8 +30,6 @@ def playbook(tmp_path):
 
 
 def test_skip_import_playbook(default_rules_collection, playbook):
-    runner = Runner(
-      playbook,
-      rules=default_rules_collection)
+    runner = Runner(playbook, rules=default_rules_collection)
     results = runner.run()
     assert len(results) == 0

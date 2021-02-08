@@ -20,6 +20,7 @@
 
 import collections
 import os
+import re
 
 import pytest
 
@@ -35,16 +36,12 @@ def test_rules_collection() -> RulesCollection:
 
 @pytest.fixture
 def ematchtestfile() -> Lintable:
-    return Lintable(
-        'examples/playbooks/ematcher-rule.yml',
-        kind='playbook')
+    return Lintable('examples/playbooks/ematcher-rule.yml', kind='playbook')
 
 
 @pytest.fixture
 def bracketsmatchtestfile() -> Lintable:
-    return Lintable(
-        'examples/playbooks/bracketsmatchtest.yml',
-        kind='playbook')
+    return Lintable('examples/playbooks/bracketsmatchtest.yml', kind='playbook')
 
 
 def test_load_collection_from_directory(test_rules_collection):
@@ -54,7 +51,7 @@ def test_load_collection_from_directory(test_rules_collection):
 
 def test_run_collection(test_rules_collection, ematchtestfile):
     matches = test_rules_collection.run(ematchtestfile)
-    assert len(matches) == 3  # 3 occurences of BANNED using TEST0001
+    assert len(matches) == 3  # 3 occurrences of BANNED using TEST0001
     assert matches[0].linenumber == 2
 
 
@@ -117,3 +114,14 @@ def test_rich_rule_listing():
         assert rule.shortdesc in result.stdout
         # description could wrap inside table, so we do not check full length
         assert rule.description[:30] in result.stdout
+
+
+def test_rules_id_format() -> None:
+    """Assure all our rules have consistent format."""
+    rule_id_re = re.compile("^[a-z-]{4,30}$")
+    rules = RulesCollection([os.path.abspath('./src/ansiblelint/rules')])
+    for rule in rules:
+        assert rule_id_re.match(
+            rule.id
+        ), f"R rule id {rule.id} did not match our required format."
+    assert len(rules) == 37

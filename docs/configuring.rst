@@ -22,31 +22,8 @@ will be preferred, in the case of something like **quiet**.
 The following values are supported, and function identically to their CLI
 counterparts:
 
-.. code-block:: yaml
-
-    exclude_paths:
-      - ./my/excluded/directory/
-      - ./my/other/excluded/directory/
-      - ./last/excluded/directory/
-    parseable: true
-    quiet: true
-    rulesdir:
-      - ./rule/directory/
-    skip_list:
-      - skip_this_tag
-      - and_this_one_too
-      - skip_this_id
-      - '401'
-    tags:
-      - run_this_tag
-    use_default_rules: true
-    verbosity: 1
-    warn_list:
-      - skip_this_tag
-      - and_this_one_too
-      - skip_this_id
-      - '401'
-
+.. literalinclude:: ../.ansible-lint
+  :language: yaml
 
 Pre-commit Setup
 ----------------

@@ -27,41 +27,63 @@ from ansiblelint.cli import abspath
 from ansiblelint.file_utils import Lintable
 from ansiblelint.runner import Runner
 
-LOTS_OF_WARNINGS_PLAYBOOK = abspath('examples/lots_of_warnings.yml', os.getcwd())
+LOTS_OF_WARNINGS_PLAYBOOK = abspath(
+    'examples/playbooks/lots_of_warnings.yml', os.getcwd()
+)
 
 
-@pytest.mark.parametrize(('playbook', 'exclude', 'length'), (
-    ('examples/playbooks/nomatchestest.yml', [], 0),
-    ('examples/playbooks/unicode.yml', [], 1),
-    (LOTS_OF_WARNINGS_PLAYBOOK, [LOTS_OF_WARNINGS_PLAYBOOK], 0),
-    ('examples/playbooks/become.yml', [], 0),
-    ('examples/playbooks/contains_secrets.yml', [], 0),
-))
+@pytest.mark.parametrize(
+    ('playbook', 'exclude', 'length'),
+    (
+        pytest.param('examples/playbooks/nomatchestest.yml', [], 0, id="nomatchestest"),
+        pytest.param('examples/playbooks/unicode.yml', [], 1, id="unicode"),
+        pytest.param(
+            LOTS_OF_WARNINGS_PLAYBOOK,
+            [LOTS_OF_WARNINGS_PLAYBOOK],
+            0,
+            id="lots_of_warnings",
+        ),
+        pytest.param('examples/playbooks/become.yml', [], 0, id="become"),
+        pytest.param(
+            'examples/playbooks/contains_secrets.yml', [], 0, id="contains_secrets"
+        ),
+    ),
+)
 def test_runner(default_rules_collection, playbook, exclude, length) -> None:
-    runner = Runner(
-        playbook,
-        rules=default_rules_collection,
-        exclude_paths=exclude)
+    runner = Runner(playbook, rules=default_rules_collection, exclude_paths=exclude)
 
     matches = runner.run()
 
     assert len(matches) == length
 
 
-@pytest.mark.parametrize(('formatter_cls'), (
-    pytest.param(formatters.Formatter, id='Formatter-plain'),
-    pytest.param(formatters.ParseableFormatter,
-                 id='ParseableFormatter-colored'),
-    pytest.param(formatters.QuietFormatter,
-                 id='QuietFormatter-colored'),
-    pytest.param(formatters.Formatter,
-                 id='Formatter-colored'),
-))
+def test_runner_exclude_paths(default_rules_collection) -> None:
+    """Test that exclude paths do work."""
+    runner = Runner(
+        'examples/playbooks/example.yml',
+        rules=default_rules_collection,
+        exclude_paths=['examples/'],
+    )
+
+    matches = runner.run()
+    assert len(matches) == 0
+
+
+@pytest.mark.parametrize(
+    ('formatter_cls'),
+    (
+        pytest.param(formatters.Formatter, id='Formatter-plain'),
+        pytest.param(formatters.ParseableFormatter, id='ParseableFormatter-colored'),
+        pytest.param(formatters.QuietFormatter, id='QuietFormatter-colored'),
+        pytest.param(formatters.Formatter, id='Formatter-colored'),
+    ),
+)
 def test_runner_unicode_format(default_rules_collection, formatter_cls) -> None:
     formatter = formatter_cls(os.getcwd(), display_relative_path=True)
     runner = Runner(
         Lintable('examples/playbooks/unicode.yml', "playbook"),
-        rules=default_rules_collection)
+        rules=default_rules_collection,
+    )
 
     matches = runner.run()
 
@@ -70,10 +92,10 @@ def test_runner_unicode_format(default_rules_collection, formatter_cls) -> None:
 
 @pytest.mark.parametrize('directory_name', ('test/', os.path.abspath('test')))
 def test_runner_with_directory(default_rules_collection, directory_name) -> None:
-    runner = Runner(
-        directory_name,
-        rules=default_rules_collection)
-    assert list(runner.lintables)[0].kind == 'role'
+    runner = Runner(directory_name, rules=default_rules_collection)
+
+    expected = Lintable(name=directory_name, kind="role")
+    assert expected in runner.lintables
 
 
 def test_files_not_scanned_twice(default_rules_collection) -> None:
@@ -84,7 +106,8 @@ def test_files_not_scanned_twice(default_rules_collection) -> None:
         filename,
         rules=default_rules_collection,
         verbosity=0,
-        checked_files=checked_files)
+        checked_files=checked_files,
+    )
     run1 = runner.run()
     assert len(runner.checked_files) == 2
     assert len(run1) == 1
@@ -94,7 +117,8 @@ def test_files_not_scanned_twice(default_rules_collection) -> None:
         filename,
         rules=default_rules_collection,
         verbosity=0,
-        checked_files=checked_files)
+        checked_files=checked_files,
+    )
     run2 = runner.run()
     assert len(runner.checked_files) == 3
     # this second run should return 0 because the included filed was already

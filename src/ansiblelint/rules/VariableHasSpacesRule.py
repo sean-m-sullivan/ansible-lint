@@ -3,26 +3,31 @@
 
 import re
 import sys
+from typing import Any, Dict, Union
 
 from ansiblelint.rules import AnsibleLintRule
+from ansiblelint.utils import nested_items
 
 
 class VariableHasSpacesRule(AnsibleLintRule):
-    id = '206'
-    shortdesc = 'Variables should have spaces before and after: {{ var_name }}'
+    id = 'var-spacing'
+    base_msg = 'Variables should have spaces before and after: '
+    shortdesc = base_msg + ' {{ var_name }}'
     description = 'Variables should have spaces before and after: ``{{ var_name }}``'
     severity = 'LOW'
     tags = ['formatting']
     version_added = 'v4.0.0'
 
-    variable_syntax = re.compile(r"{{.*}}")
-    bracket_regex = re.compile(r"{{[^{' -]|[^ '}-]}}")
+    bracket_regex = re.compile(r"{{[^{\n' -]|[^ '\n}-]}}", re.MULTILINE | re.DOTALL)
+    exclude_json_re = re.compile(r"[^{]{'\w+': ?[^{]{.*?}}")
 
-    def match(self, line: str) -> bool:
-        if not self.variable_syntax.search(line):
-            return False
-        line_exclude_json = re.sub(r"[^{]{'\w+': ?[^{]{.*?}}", "", line)
-        return bool(self.bracket_regex.search(line_exclude_json))
+    def matchtask(self, task: Dict[str, Any]) -> Union[bool, str]:
+        for k, v in nested_items(task):
+            if isinstance(v, str):
+                cleaned = self.exclude_json_re.sub("", v)
+                if bool(self.bracket_regex.search(cleaned)):
+                    return self.base_msg + v
+        return False
 
 
 if 'pytest' in sys.modules:
@@ -31,14 +36,12 @@ if 'pytest' in sys.modules:
     from ansiblelint.rules import RulesCollection
     from ansiblelint.runner import Runner
 
-    def test_206() -> None:
+    def test_var_spacing() -> None:
         """Verify rule."""
         collection = RulesCollection()
         collection.register(VariableHasSpacesRule())
 
-        lintable = Lintable("examples/playbooks/206.yml")
-        results = Runner(
-            lintable,
-            rules=collection).run()
+        lintable = Lintable("examples/playbooks/var-spacing.yml")
+        results = Runner(lintable, rules=collection).run()
 
         assert len(results) == 3

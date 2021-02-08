@@ -1,4 +1,4 @@
-# Should raise 206 at lines 25, 28, 31
+# Should raise var-spacing at lines 25, 28, 31
 - hosts: all
   tasks:
     - name: good variable format
@@ -29,9 +29,20 @@
     - name: bad variable format
       debug:
         msg: "{{bad_format }}"
-    - name: not a jinja variable
+    - name: not a jinja variable  # noqa var-spacing
       debug:
         msg: "data = ${lookup{$local_part}lsearch{/etc/aliases}}"
     - name: JSON inside jinja is valid
       debug:
         msg: "{{ {'test': {'subtest': variable}} }}"
+    - name: Avoid false positive on multiline
+      vars:
+        cases:
+          case1: >-
+            http://example.com/{{
+              case1 }}
+          case2: >-
+            http://example.com/{{
+            case2 }}
+      debug:
+        var: cases

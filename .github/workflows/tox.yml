@@ -1,14 +1,11 @@
 name: gh
 
 on:
-  create:  # is used for publishing to PyPI and TestPyPI
-    tags:  # any tag regardless of its name, no branches
   push:  # only publishes pushes to the main branch to TestPyPI
     branches:  # any integration branch but not tag
     - "master"
-    tags-ignore:
-    - >-
-      **
+    tags:
+    - "*"
   pull_request:
   schedule:
   - cron: 1 0 * * *  # Run daily at 0:01 UTC
@@ -234,15 +231,6 @@ jobs:
       uses: actions/checkout@v2
       with:
         fetch-depth: 0  # needed by setuptools-scm
-
-    - name: Drop Git tags from HEAD for non-tag-create events
-      if: >-
-        github.event_name != 'create' ||
-        github.event.ref_type != 'tag'
-      run: >-
-        git tag --points-at HEAD
-        |
-        xargs git tag --delete
     - name: Build dists
       run: python -m tox -p auto --parallel-live -vvvv
     - name: Publish to test.pypi.org

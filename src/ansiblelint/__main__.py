@@ -34,8 +34,16 @@ from enrich.console import should_do_markup
 from ansiblelint import cli
 from ansiblelint._prerun import check_ansible_presence, prepare_environment
 from ansiblelint.app import App
-from ansiblelint.color import console, console_options, console_stderr, reconfigure, render_yaml
+from ansiblelint.color import (
+    console,
+    console_options,
+    console_stderr,
+    reconfigure,
+    render_yaml,
+)
+from ansiblelint.config import options, used_old_tags
 from ansiblelint.file_utils import cwd
+from ansiblelint.skip_utils import normalize_tag
 from ansiblelint.version import __version__
 
 if TYPE_CHECKING:
@@ -47,11 +55,7 @@ _logger = logging.getLogger(__name__)
 
 def initialize_logger(level: int = 0) -> None:
     """Set up the global logging level based on the verbosity number."""
-    VERBOSITY_MAP = {
-        0: logging.NOTSET,
-        1: logging.INFO,
-        2: logging.DEBUG
-    }
+    VERBOSITY_MAP = {0: logging.NOTSET, 1: logging.INFO, 2: logging.DEBUG}
 
     handler = logging.StreamHandler()
     formatter = logging.Formatter('%(levelname)-8s %(message)s')
@@ -63,6 +67,30 @@ def initialize_logger(level: int = 0) -> None:
     logger.setLevel(logging_level)
     # Use module-level _logger instance to validate it
     _logger.debug("Logging initialized to level %s", logging_level)
+
+
+def initialize_options(arguments: List[str]):
+    """Load config options and store them inside options module."""
+    new_options = cli.get_config(arguments)
+    new_options.cwd = pathlib.Path.cwd()
+
+    if new_options.version:
+        print('ansible-lint {ver!s}'.format(ver=__version__))
+        # assure we fail if ansible is missing, even for version printing
+        check_ansible_presence()
+        sys.exit(0)
+
+    if new_options.colored is None:
+        new_options.colored = should_do_markup()
+
+    # persist loaded configuration inside options module
+    for k, v in new_options.__dict__.items():
+        setattr(options, k, v)
+
+    # rename deprecated ids/tags to newer names
+    options.tags = [normalize_tag(tag) for tag in options.tags]
+    options.skip_list = [normalize_tag(tag) for tag in options.skip_list]
+    options.warn_list = [normalize_tag(tag) for tag in options.warn_list]
 
 
 def report_outcome(result: "LintResult", options, mark_as_success=False) -> int:
@@ -86,18 +114,29 @@ warn_list:  # or 'skip_list' to silence them completely
         else:
             warnings += 1
 
+    entries = []
     for key in sorted(matched_rules.keys()):
         if {key, *matched_rules[key].tags}.isdisjoint(options.warn_list):
-            msg += f"  - '{key}'  # {matched_rules[key].shortdesc}\n"
+            entries.append(f"  - {key}  # {matched_rules[key].shortdesc}\n")
     for match in result.matches:
         if "experimental" in match.rule.tags:
-            msg += "  - experimental  # all rules tagged as experimental\n"
+            entries.append("  - experimental  # all rules tagged as experimental\n")
             break
+    msg += "".join(sorted(entries))
+
+    for k, v in used_old_tags.items():
+        _logger.warning(
+            "Replaced deprecated tag '%s' with '%s' but it will become an "
+            "error in the future.",
+            k,
+            v,
+        )
 
     if result.matches and not options.quiet:
         console_stderr.print(
             "You can skip specific rules or tags by adding them to your "
-            "configuration file:")
+            "configuration file:"
+        )
         console_stderr.print(render_yaml(msg))
         console_stderr.print(
             f"Finished with {failures} failure(s), {warnings} warning(s) "
@@ -113,18 +152,8 @@ def main(argv: List[str] = None) -> int:
     """Linter CLI entry point."""
     if argv is None:
         argv = sys.argv
+    initialize_options(argv[1:])
 
-    options = cli.get_config(argv[1:])
-    options.cwd = pathlib.Path.cwd()
-
-    if options.version:
-        print('ansible-lint {ver!s}'.format(ver=__version__))
-        # assure we fail if ansible is missing, even for version printing
-        check_ansible_presence()
-        sys.exit(0)
-
-    if options.colored is None:
-        options.colored = should_do_markup()
     console_options["force_terminal"] = options.colored
     reconfigure(console_options)
 
@@ -145,33 +174,27 @@ def main(argv: List[str] = None) -> int:
 
     if options.listrules:
 
-        _rule_format_map = {
-            'plain': str,
-            'rich': rules_as_rich,
-            'rst': rules_as_rst
-        }
+        _rule_format_map = {'plain': str, 'rich': rules_as_rich, 'rst': rules_as_rst}
 
-        console.print(
-            _rule_format_map[options.format](rules),
-            highlight=False)
+        console.print(_rule_format_map[options.format](rules), highlight=False)
         return 0
 
     if options.listtags:
-        console.print(
-            render_yaml(rules.listtags())
-            )
+        console.print(render_yaml(rules.listtags()))
         return 0
 
     if isinstance(options.tags, str):
         options.tags = options.tags.split(',')
 
     from ansiblelint.runner import _get_matches
+
     result = _get_matches(rules, options)
 
     mark_as_success = False
     if result.matches and options.progressive:
         _logger.info(
-            "Matches found, running again on previous revision in order to detect regressions")
+            "Matches found, running again on previous revision in order to detect regressions"
+        )
         with _previous_revision():
             old_result = _get_matches(rules, options)
             # remove old matches from current list
@@ -180,7 +203,9 @@ def main(argv: List[str] = None) -> int:
                 _logger.warning(
                     "Total violations not increased since previous "
                     "commit, will mark result as success. (%s -> %s)",
-                    len(old_result.matches), len(matches_delta))
+                    len(old_result.matches),
+                    len(matches_delta),
+                )
                 mark_as_success = True
 
             ignored = 0
@@ -192,7 +217,9 @@ def main(argv: List[str] = None) -> int:
             if ignored:
                 _logger.warning(
                     "Marked %s previously known violation(s) as ignored due to"
-                    " progressive mode.", ignored)
+                    " progressive mode.",
+                    ignored,
+                )
 
     app.render_matches(result.matches)
 
@@ -209,7 +236,7 @@ def _previous_revision():
         universal_newlines=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
-        ).stdout
+    ).stdout
     p = pathlib.Path(worktree_dir)
     p.mkdir(parents=True, exist_ok=True)
     os.system(f"git worktree add -f {worktree_dir} 2>/dev/null")

@@ -5,7 +5,7 @@ from ansiblelint.rules import AnsibleLintRule
 
 
 class ShellWithoutPipefail(AnsibleLintRule):
-    id = '306'
+    id = 'risky-shell-pipe'
     shortdesc = 'Shells that use pipes should set the pipefail option'
     description = (
         'Without the pipefail option set, a shell command that '
@@ -33,8 +33,10 @@ class ShellWithoutPipefail(AnsibleLintRule):
             return False
 
         unjinjad_cmd = self.unjinja(
-            ' '.join(task["action"].get("__ansible_arguments__", [])))
+            ' '.join(task["action"].get("__ansible_arguments__", []))
+        )
 
         return bool(
-            self._pipe_re.search(unjinjad_cmd) and
-            not self._pipefail_re.match(unjinjad_cmd))
+            self._pipe_re.search(unjinjad_cmd)
+            and not self._pipefail_re.match(unjinjad_cmd)
+        )

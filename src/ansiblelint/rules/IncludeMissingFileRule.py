@@ -17,22 +17,24 @@ if TYPE_CHECKING:
 
 
 class IncludeMissingFileRule(AnsibleLintRule):
-    id = '505'
+    id = 'missing-import'
     shortdesc = 'referenced files must exist'
     description = (
-        'All files referenced by by include / import tasks '
+        'All files referenced by include / import tasks '
         'must exist. The check excludes files with jinja2 '
         'templates in the filename.'
     )
     severity = 'MEDIUM'
-    tags = ['task', 'bug']
+    tags = ['idiom']
     version_added = 'v4.3.0'
 
-    def matchplay(self, file: "Lintable", data: "odict[str, Any]") -> List["MatchError"]:
+    def matchplay(
+        self, file: "Lintable", data: "odict[str, Any]"
+    ) -> List["MatchError"]:
         results = []
 
         # avoid failing with a playbook having tasks: null
-        for task in (data.get('tasks', []) or []):
+        for task in data.get('tasks', []) or []:
 
             # ignore None tasks or
             # if the id of the current rule is not in list of skipped rules for this play
@@ -42,9 +44,11 @@ class IncludeMissingFileRule(AnsibleLintRule):
             # collect information which file was referenced for include / import
             referenced_file = None
             for key, val in task.items():
-                if not (key.startswith('include_') or
-                        key.startswith('import_') or
-                        key == 'include'):
+                if not (
+                    key.startswith('include_')
+                    or key.startswith('import_')
+                    or key == 'include'
+                ):
                     continue
                 if isinstance(val, ansible.parsing.yaml.objects.AnsibleMapping):
                     referenced_file = val.get('file', None)
@@ -72,5 +76,7 @@ class IncludeMissingFileRule(AnsibleLintRule):
                 self.create_matcherror(
                     filename=task['__file__'],
                     linenumber=task['__line__'],
-                    details=referenced_file))
+                    details=referenced_file,
+                )
+            )
         return results

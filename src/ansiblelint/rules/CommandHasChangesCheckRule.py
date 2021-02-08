@@ -24,7 +24,7 @@ from ansiblelint.rules import AnsibleLintRule
 
 
 class CommandHasChangesCheckRule(AnsibleLintRule):
-    id = '301'
+    id = 'no-changed-when'
     shortdesc = 'Commands should not change things if nothing needs doing'
     description = (
         'Commands should either read information (and thus set '
@@ -41,8 +41,10 @@ class CommandHasChangesCheckRule(AnsibleLintRule):
     def matchtask(self, task: Dict[str, Any]) -> Union[bool, str]:
         if task["__ansible_action_type__"] == 'task':
             if task["action"]["__ansible_module__"] in self._commands:
-                return 'changed_when' not in task and \
-                    'when' not in task and \
-                    'creates' not in task['action'] and \
-                    'removes' not in task['action']
+                return (
+                    'changed_when' not in task
+                    and 'when' not in task
+                    and 'creates' not in task['action']
+                    and 'removes' not in task['action']
+                )
         return False

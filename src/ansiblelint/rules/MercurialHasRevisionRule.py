@@ -24,16 +24,18 @@ from ansiblelint.rules import AnsibleLintRule
 
 
 class MercurialHasRevisionRule(AnsibleLintRule):
-    id = '402'
+    id = 'hg-latest'
     shortdesc = 'Mercurial checkouts must contain explicit revision'
     description = (
         'All version control checkouts must point to '
         'an explicit commit or tag, not just ``latest``'
     )
     severity = 'MEDIUM'
-    tags = ['module', 'repeatability']
+    tags = ['idempotency']
     version_added = 'historic'
 
     def matchtask(self, task: Dict[str, Any]) -> Union[bool, str]:
-        return bool(task['action']['__ansible_module__'] == 'hg' and
-                    task['action'].get('revision', 'default') == 'default')
+        return bool(
+            task['action']['__ansible_module__'] == 'hg'
+            and task['action'].get('revision', 'default') == 'default'
+        )

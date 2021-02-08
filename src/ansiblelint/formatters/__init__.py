@@ -1,7 +1,9 @@
 """Output formatters."""
+import hashlib
+import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, TypeVar, Union
 
 import rich
 
@@ -53,16 +55,15 @@ class BaseFormatter(Generic[T]):
 
 
 class Formatter(BaseFormatter):
-
     def format(self, match: "MatchError") -> str:
         _id = getattr(match.rule, 'id', '000')
-        result = (
-            f"[error_code]{_id}[/][dim]:[/] [error_title]{self.escape(match.message)}[/]")
+        result = f"[error_code]{_id}[/][dim]:[/] [error_title]{self.escape(match.message)}[/]"
         if match.tag:
             result += f" [dim][error_code]({match.tag})[/][/]"
         result += (
             "\n"
-            f"[filename]{self._format_path(match.filename or '')}[/]:{match.position}")
+            f"[filename]{self._format_path(match.filename or '')}[/]:{match.position}"
+        )
         if match.details:
             result += f" [dim]{match.details}[/]"
         result += "\n"
@@ -70,11 +71,11 @@ class Formatter(BaseFormatter):
 
 
 class QuietFormatter(BaseFormatter):
-
     def format(self, match: "MatchError") -> str:
         return (
             f"[error_code]{match.rule.id}[/] "
-            f"[filename]{self._format_path(match.filename or '')}[/]:{match.position}")
+            f"[filename]{self._format_path(match.filename or '')}[/]:{match.position}"
+        )
 
 
 class ParseableFormatter(BaseFormatter):
@@ -83,7 +84,8 @@ class ParseableFormatter(BaseFormatter):
     def format(self, match: "MatchError") -> str:
         result = (
             f"[filename]{self._format_path(match.filename or '')}[/]:{match.position}: "
-            f"[error_code]E{match.rule.id}[/] [dim]{self.escape(match.message)}[/]")
+            f"[error_code]{match.rule.id}[/] [dim]{self.escape(match.message)}[/]"
+        )
         if match.tag:
             result += f" [dim][error_code]({match.tag})[/][/]"
         return result
@@ -118,7 +120,7 @@ class AnnotationsFormatter(BaseFormatter):
             col = ""
         return (
             f"::{level} file={file_path},line={line_num}{col},severity={severity}"
-            f"::E{rule_id} {violation_details}"
+            f"::{rule_id} {violation_details}"
         )
 
     @staticmethod
@@ -132,15 +134,72 @@ class AnnotationsFormatter(BaseFormatter):
 
 
 class ParseableSeverityFormatter(BaseFormatter):
-
     def format(self, match: "MatchError") -> str:
 
         filename = self._format_path(match.filename or "")
         position = match.position
-        rule_id = u"E{0}".format(match.rule.id)
+        rule_id = u"{0}".format(match.rule.id)
         severity = match.rule.severity
         message = self.escape(str(match.message))
 
         return (
             f"[filename]{filename}[/]:{position}: [[error_code]{rule_id}[/]] "
-            f"[[error_code]{severity}[/]] [dim]{message}[/]")
+            f"[[error_code]{severity}[/]] [dim]{message}[/]"
+        )
+
+
+class CodeclimateJSONFormatter(BaseFormatter):
+    """Formatter for emitting violations in Codeclimate JSON report format.
+
+    The formatter expects a list of MatchError objects and returns a JSON formatted string.
+    The spec for the codeclimate report can be found here:
+    https://github.com/codeclimate/platform/blob/master/spec/analyzers/SPEC.md#data-type
+    """
+
+    def format_result(self, matches: List["MatchError"]) -> str:
+
+        if not isinstance(matches, list):
+            raise RuntimeError(
+                "The CodeclimatJSONFormatter was expecting a list of MatchError."
+            )
+
+        result = []
+        for match in matches:
+            issue: Dict[str, Any] = {}
+            issue['type'] = 'issue'
+            issue['check_name'] = f"[{match.rule.id}] {match.message}"
+            issue['categories'] = match.rule.tags
+            issue['severity'] = self._severity_to_level(match.rule.severity)
+            issue['description'] = self.escape(str(match.rule.description))
+            issue['fingerprint'] = hashlib.sha256(
+                repr(match).encode('utf-8')
+            ).hexdigest()
+            issue['location'] = {}
+            issue['location']['path'] = self._format_path(match.filename or "")
+            issue['location']['lines'] = {}
+            if match.column:
+                issue['location']['lines']['begin'] = {}
+                issue['location']['lines']['begin']['line'] = match.linenumber
+                issue['location']['lines']['begin']['column'] = match.column
+            else:
+                issue['location']['lines']['begin'] = match.linenumber
+            if match.details:
+                issue['content'] = {}
+                issue['content']['body'] = match.details
+            # Append issue to result list
+            result.append(issue)
+
+        return json.dumps(result)
+
+    @staticmethod
+    def _severity_to_level(severity: str) -> str:
+        if severity in ['LOW']:
+            return 'minor'
+        if severity in ['MEDIUM']:
+            return 'major'
+        if severity in ['HIGH']:
+            return 'critical'
+        if severity in ['VERY_HIGH']:
+            return 'blocker'
+        # VERY_LOW, INFO or anything else
+        return 'info'

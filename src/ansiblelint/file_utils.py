@@ -1,9 +1,17 @@
 """Utility functions related to file operations."""
+import copy
+import logging
 import os
+import subprocess
+from argparse import Namespace
+from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Union
 
+import wcmatch.pathlib
+
+from ansiblelint.config import options
 from ansiblelint.constants import FileType
 
 if TYPE_CHECKING:
@@ -11,6 +19,8 @@ if TYPE_CHECKING:
     BasePathLike = os.PathLike[Any]  # pylint: disable=unsubscriptable-object
 else:
     BasePathLike = os.PathLike
+
+_logger = logging.getLogger(__package__)
 
 
 def normpath(path: Union[str, BasePathLike]) -> str:
@@ -20,8 +30,13 @@ def normpath(path: Union[str, BasePathLike]) -> str:
     Currently it generates a relative path but in the future we may want to
     make this user configurable.
     """
-    # convertion to string in order to allow receiving non string objects
-    return os.path.relpath(str(path))
+    # conversion to string in order to allow receiving non string objects
+    relpath = os.path.relpath(str(path))
+    abspath = os.path.abspath(str(path))
+    # we avoid returning relative paths that endup at root level
+    if abspath in relpath:
+        return abspath
+    return relpath
 
 
 @contextmanager
@@ -50,6 +65,27 @@ def expand_paths_vars(paths: List[str]) -> List[str]:
     return paths
 
 
+def kind_from_path(path: Path):
+    """Determine the file kind based on its name."""
+    # pathlib.Path.match patterns are very limited, they do not support *a*.yml
+    # glob.glob supports **/foo.yml but not multiple extensions
+    pathex = wcmatch.pathlib.PurePath(path)
+    for entry in options.kinds:
+        for k, v in entry.items():
+            if pathex.globmatch(
+                v,
+                flags=(
+                    wcmatch.pathlib.GLOBSTAR
+                    | wcmatch.pathlib.BRACE
+                    | wcmatch.pathlib.DOTGLOB
+                ),
+            ):
+                return k
+    if path.is_dir():
+        return "role"
+    raise RuntimeError("Unable to determine file type for %s" % pathex)
+
+
 class Lintable:
     """Defines a file/folder that can be linted.
 
@@ -57,21 +93,32 @@ class Lintable:
     instances that do not need files to be present on disk.
     """
 
-    def __init__(self, name: str, content: Optional[str] = None, kind: Optional[FileType] = None):
+    def __init__(
+        self,
+        name: Union[str, Path],
+        content: Optional[str] = None,
+        kind: Optional[FileType] = None,
+    ):
         """Create a Lintable instance."""
-        self.name = name
-        self.path = Path(name)
+        if isinstance(name, str):
+            self.name = normpath(name)
+            self.path = Path(self.name)
+        else:
+            self.name = str(name)
+            self.path = name
         self._content = content
-        if not kind:
-            if str(self.path.name) == "requirements.yml":
-                kind = "requirements"
-            elif self.path.is_dir():
-                kind = "role"
-            elif self.path.name in ['main.yml', 'main.yaml'] and self.path.parent.name == 'meta':
-                kind = "meta"
-            else:
-                kind = "playbook"
-        self.kind = kind
+
+        # if the lintable is part of a role, we save role folder name
+        self.role = ""
+        parts = self.path.parent.parts
+        if 'roles' in parts:
+            role = self.path
+            while role.parent.name != "roles" and role.name:
+                role = role.parent
+            if role.exists:
+                self.role = role.name
+
+        self.kind = kind or kind_from_path(self.path)
         # We store absolute directory in dir
         if self.kind == "role":
             self.dir = str(self.path.resolve())
@@ -103,7 +150,7 @@ class Lintable:
 
     def __hash__(self) -> int:
         """Return a hash value of the lintables."""
-        return hash(tuple(self.name,))
+        return hash((self.name, self.kind))
 
     def __eq__(self, other: object) -> bool:
         """Identify whether the other object represents the same rule match."""
@@ -114,3 +161,46 @@ class Lintable:
     def __repr__(self) -> str:
         """Return user friendly representation of a lintable."""
         return f"{self.name} ({self.kind})"
+
+
+def get_yaml_files(options: Namespace) -> Dict[str, Any]:
+    """Find all yaml files."""
+    # git is preferred as it also considers .gitignore
+    git_command = ['git', 'ls-files', '*.yaml', '*.yml']
+    _logger.info("Discovering files to lint: %s", ' '.join(git_command))
+
+    out = None
+
+    try:
+        out = subprocess.check_output(
+            git_command, stderr=subprocess.STDOUT, universal_newlines=True
+        ).splitlines()
+    except subprocess.CalledProcessError as exc:
+        _logger.warning(
+            "Failed to discover yaml files to lint using git: %s",
+            exc.output.rstrip('\n'),
+        )
+    except FileNotFoundError as exc:
+        if options.verbosity:
+            _logger.warning("Failed to locate command: %s", exc)
+
+    if out is None:
+        out = [
+            os.path.join(root, name)
+            for root, dirs, files in os.walk('.')
+            for name in files
+            if name.endswith('.yaml') or name.endswith('.yml')
+        ]
+
+    return OrderedDict.fromkeys(sorted(out))
+
+
+def expand_dirs_in_lintables(lintables: Set[Lintable]) -> None:
+    """Return all recognized lintables within given directory."""
+    all_files = get_yaml_files(options)
+
+    for item in copy.copy(lintables):
+        if item.path.is_dir():
+            for filename in all_files:
+                if filename.startswith(str(item.path)):
+                    lintables.add(Lintable(filename))

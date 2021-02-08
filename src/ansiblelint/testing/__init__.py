@@ -39,7 +39,9 @@ class RunFromText:
 
     def run_playbook(self, playbook_text: str) -> List[MatchError]:
         """Lints received text as a playbook."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", prefix="playbook") as fp:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yml", prefix="playbook"
+        ) as fp:
             fp.write(playbook_text)
             fp.flush()
             results = self._call_runner(fp.name)
@@ -69,16 +71,39 @@ class RunFromText:
 
 
 def run_ansible_lint(
-        *argv: str,
-        cwd: Optional[str] = None,
-        executable: Optional[str] = None,
-        env: Optional[Dict[str, str]] = None) -> CompletedProcess:
+    *argv: str,
+    cwd: Optional[str] = None,
+    executable: Optional[str] = None,
+    env: Optional[Dict[str, str]] = None
+) -> CompletedProcess:
     """Run ansible-lint on a given path and returns its output."""
     if not executable:
         executable = sys.executable
         args = [sys.executable, "-m", "ansiblelint", *argv]
     else:
         args = [executable, *argv]
+
+    # It is not safe to pass entire env for testing as other tests would
+    # pollute the env, causing weird behaviors, so we pass only a safe list of
+    # vars.
+    safe_list = [
+        'LANG',
+        'LC_ALL',
+        'LC_CTYPE',
+        'PATH',
+        'PYTHONIOENCODING',
+        'PYTHONPATH',
+        'TERM',
+    ]
+
+    if env is None:
+        _env = {}
+        for v in safe_list:
+            if v in os.environ:
+                _env[v] = os.environ[v]
+
+    else:
+        _env = env
 
     return subprocess.run(
         args,
@@ -87,6 +112,6 @@ def run_ansible_lint(
         shell=False,  # needed when command is a list
         check=False,
         cwd=cwd,
-        env=env,
-        universal_newlines=True
+        env=_env,
+        universal_newlines=True,
     )

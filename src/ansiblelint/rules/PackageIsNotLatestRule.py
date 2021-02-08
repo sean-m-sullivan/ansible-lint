@@ -24,14 +24,13 @@ from ansiblelint.rules import AnsibleLintRule
 
 
 class PackageIsNotLatestRule(AnsibleLintRule):
-    id = '403'
+    id = 'package-latest'
     shortdesc = 'Package installs should not use latest'
     description = (
-        'Package installs should use ``state=present`` '
-        'with or without a version'
+        'Package installs should use ``state=present`` with or without a version'
     )
     severity = 'VERY_LOW'
-    tags = ['module', 'repeatability']
+    tags = ['idempotency']
     version_added = 'historic'
 
     _package_managers = [
@@ -64,6 +63,9 @@ class PackageIsNotLatestRule(AnsibleLintRule):
     ]
 
     def matchtask(self, task: Dict[str, Any]) -> Union[bool, str]:
-        return (task['action']['__ansible_module__'] in self._package_managers and
-                not task['action'].get('version') and
-                task['action'].get('state') == 'latest')
+        return (
+            task['action']['__ansible_module__'] in self._package_managers
+            and not task['action'].get('version')
+            and not task['action'].get('update_only')
+            and task['action'].get('state') == 'latest'
+        )

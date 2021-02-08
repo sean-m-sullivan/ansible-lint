@@ -79,7 +79,7 @@ Included in ``ansible-lint/examples`` are some example playbooks with
 undesirable features. Running ansible-lint on them works, as demonstrated in
 the following:
 
-.. command-output:: ansible-lint -p examples/example.yml
+.. command-output:: ansible-lint -p examples/playbooks/example.yml
    :cwd: ..
    :returncode: 2
    :nostderr:
@@ -87,7 +87,14 @@ the following:
 If playbooks include other playbooks, or tasks, or handlers or roles, these
 are also handled:
 
-.. command-output:: ansible-lint -p examples/include.yml
+.. command-output:: ansible-lint -p examples/playbooks/include.yml
+   :cwd: ..
+   :returncode: 2
+   :nostderr:
+
+A codeclimate report in JSON format can be generated with ansible-lint.
+
+.. command-output:: ansible-lint -f codeclimate examples/playbooks/example.yml
    :cwd: ..
    :returncode: 2
    :nostderr:
